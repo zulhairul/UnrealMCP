@@ -27,7 +27,8 @@ public class UnrealMCP : ModuleRules
 				"Core", "CoreUObject", "Engine", "UnrealEd",
 				"Networking", "Sockets", "Slate", "SlateCore", "EditorStyle",
 				"DeveloperSettings", "Projects", "ToolMenus",
-				"BlueprintGraph", "GraphEditor", "KismetCompiler"
+				"BlueprintGraph", "GraphEditor", "KismetCompiler",
+				"UMG", "CommonUI", "ModelViewViewModel"
 			}
 		);
 			
@@ -35,8 +36,9 @@ public class UnrealMCP : ModuleRules
 		PrivateDependencyModuleNames.AddRange(
 			new string[] { 
 				"Json", "JsonUtilities", "Settings", "InputCore", "PythonScriptPlugin",
-				"Kismet", "KismetWidgets", "AssetRegistry",
-				"GameplayAbilities", "GameplayTags", "GameplayTasks"
+				"Kismet", "KismetWidgets", "AssetRegistry", "AssetTools",
+				"GameplayAbilities", "GameplayTags", "GameplayTasks",
+				"UMGEditor", "ModelViewViewModelEditor", "CommonInput"
 			}
 		);
 		

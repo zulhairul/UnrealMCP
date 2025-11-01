@@ -21,6 +21,7 @@
 #include "MCPCommandHandlers_GameplayAbilities.h"
 #include "MCPCommandHandlers_Materials.h"
 #include "MCPCommandHandlers_PostProcess.h"
+#include "MCPCommandHandlers_UI.h"
 #include "HAL/PlatformFilemanager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -63,6 +64,9 @@ FMCPTCPServer::FMCPTCPServer(const FMCPTCPServerConfig& InConfig)
     RegisterCommandHandler(MakeShared<FMCPModifyBlueprintHandler>());
     RegisterCommandHandler(MakeShared<FMCPGetBlueprintInfoHandler>());
     RegisterCommandHandler(MakeShared<FMCPCreateBlueprintEventHandler>());
+
+    // UI command handlers
+    RegisterCommandHandler(MakeShared<FMCPCreateMVVMUIHandler>());
 }
 
 FMCPTCPServer::~FMCPTCPServer()
