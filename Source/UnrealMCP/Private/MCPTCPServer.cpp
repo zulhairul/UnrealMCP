@@ -17,6 +17,7 @@
 #include "MCPFileLogger.h"
 #include "MCPCommandHandlers.h"
 #include "MCPCommandHandlers_Blueprints.h"
+#include "MCPCommandHandlers_CelestialVault.h"
 #include "MCPCommandHandlers_DataTables.h"
 #include "MCPCommandHandlers_GameplayAbilities.h"
 #include "MCPCommandHandlers_Materials.h"
@@ -67,6 +68,9 @@ FMCPTCPServer::FMCPTCPServer(const FMCPTCPServerConfig& InConfig)
 
     // UI command handlers
     RegisterCommandHandler(MakeShared<FMCPCreateMVVMUIHandler>());
+
+    // Celestial Vault integration
+    RegisterCommandHandler(MakeShared<FMCPSetupCelestialVaultHandler>());
 }
 
 FMCPTCPServer::~FMCPTCPServer()

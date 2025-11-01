@@ -73,6 +73,10 @@
         {
             "Name": "CommonInput",
             "Enabled": true
+        },
+        {
+            "Name": "CelestialVault",
+            "Enabled": true
         }
 	]
 }

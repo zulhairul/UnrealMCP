@@ -47,6 +47,7 @@ By using this plugin, you acknowledge that:
 - Comprehensive scene manipulation capabilities
 - Gameplay Ability System tooling for creating Gameplay Effects and managing data table registrations
 - Python companion scripts for client-side interaction
+- Celestial Vault environment setup tooling for dynamic sky and time-of-day control
 
 ## Roadmap
 These are what I have in mind for development as of 3/14/2025
@@ -153,11 +154,38 @@ The plugin supports various commands for scene manipulation:
 - `execute_python`: Run Python commands in Unreal's Python environment
 - `create_gameplay_effect`: Generate or update Gameplay Effect assets with configurable modifiers
 - `register_gameplay_effect`: Register a Gameplay Effect inside a data table row for quick lookup
+- `setup_celestial_vault`: Spawn or update the Celestial Vault sky actor, apply geographic/time settings, and configure linked components
 - And more to come...
 
 ### Python helper tools
 - `make_ge_modifier`: Build reusable Gameplay Effect modifier payloads
 - `make_application_requirements`: Assemble tag requirements used during effect application checks
+
+### Celestial Vault quick start
+Use the new MCP tool to stand up a production-ready sky rig powered by Epic's Celestial Vault plugin:
+
+```python
+# Example Claude prompt payload
+tool("setup_celestial_vault", {
+    "blueprint_path": "/CelestialVault/Blueprints/BP_CelestialSky.BP_CelestialSky_C",
+    "actor_label": "StudioSky",
+    "settings": {
+        "Latitude": 34.05,
+        "Longitude": -118.24,
+        "DateTime": "2025-06-21T18:30:00Z"
+    },
+    "components": [
+        {
+            "property": "SkyDomeComponent",
+            "settings": {
+                "CloudOpacity": 0.35
+            }
+        }
+    ]
+})
+```
+
+The tool reuses an existing actor when the `actor_label` or `actor_name` matches, otherwise it spawns the default Celestial Vault blueprint. Any property exposed on the actor or its referenced components can be overridden via simple JSON payloads, including struct types like `FVector`, `FLinearColor`, and `FDateTime`.
 
 Refer to the documentation in the `Docs` directory for a complete command reference.
 
