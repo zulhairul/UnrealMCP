@@ -38,7 +38,8 @@ public class UnrealMCP : ModuleRules
 				"Json", "JsonUtilities", "Settings", "InputCore", "PythonScriptPlugin",
 				"Kismet", "KismetWidgets", "AssetRegistry", "AssetTools",
 				"GameplayAbilities", "GameplayTags", "GameplayTasks",
-				"UMGEditor", "ModelViewViewModelEditor", "CommonInput"
+				"UMGEditor", "ModelViewViewModelEditor", "CommonInput",
+				"CelestialVault"
 			}
 		);
 		
