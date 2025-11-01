@@ -18,6 +18,7 @@
 #include "MCPCommandHandlers.h"
 #include "MCPCommandHandlers_Blueprints.h"
 #include "MCPCommandHandlers_DataTables.h"
+#include "MCPCommandHandlers_GameplayAbilities.h"
 #include "MCPCommandHandlers_Materials.h"
 #include "HAL/PlatformFilemanager.h"
 #include "Misc/FileHelper.h"
@@ -46,6 +47,10 @@ FMCPTCPServer::FMCPTCPServer(const FMCPTCPServerConfig& InConfig)
     // Data table command handlers
     RegisterCommandHandler(MakeShared<FMCPCreateDataTableHandler>());
     RegisterCommandHandler(MakeShared<FMCPModifyDataTableHandler>());
+
+    // Gameplay Ability System command handlers
+    RegisterCommandHandler(MakeShared<FMCPCreateGameplayEffectHandler>());
+    RegisterCommandHandler(MakeShared<FMCPRegisterGameplayEffectHandler>());
 
     // Blueprint command handlers
     RegisterCommandHandler(MakeShared<FMCPCreateBlueprintHandler>());
