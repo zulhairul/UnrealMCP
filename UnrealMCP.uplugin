@@ -61,6 +61,18 @@
         {
             "Name": "Composure",
             "Enabled": true
+        },
+        {
+            "Name": "ModelViewViewModel",
+            "Enabled": true
+        },
+        {
+            "Name": "CommonUI",
+            "Enabled": true
+        },
+        {
+            "Name": "CommonInput",
+            "Enabled": true
         }
 	]
 }
