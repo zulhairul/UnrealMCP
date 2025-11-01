@@ -13,6 +13,10 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"
+#include "HAL/FileManager.h"
+#include "Misc/PackageName.h"
+#include "Modules/ModuleManager.h"
+#include "AssetRegistry/AssetRegistryModule.h"
 
 
 //
@@ -582,4 +586,246 @@ TSharedPtr<FJsonObject> FMCPExecutePythonHandler::Execute(const TSharedPtr<FJson
         Response->SetObjectField("result", ResultObj);
         return Response;
     }
+}
+
+TSharedPtr<FJsonObject> FMCPImportTemplateHandler::Execute(const TSharedPtr<FJsonObject> &Params, FSocket *ClientSocket)
+{
+    FString VariantInput;
+    if (!Params->TryGetStringField(FStringView(TEXT("variant")), VariantInput))
+    {
+        MCP_LOG_WARNING("Missing 'variant' field in import_template_variant command");
+        return CreateErrorResponse("Missing 'variant' field. Expected one of: ThirdPerson, FirstPerson, TopDown.");
+    }
+
+    auto NormalizeVariantToken = [](const FString& InVariant) -> FString
+    {
+        FString Normalized = InVariant.ToLower();
+        Normalized.ReplaceInline(TEXT(" "), TEXT(""));
+        Normalized.ReplaceInline(TEXT("-"), TEXT(""));
+        Normalized.ReplaceInline(TEXT("_"), TEXT(""));
+        return Normalized;
+    };
+
+    struct FTemplateVariantDefinition
+    {
+        FString Key;
+        FString FriendlyName;
+        FString DefaultFolderName;
+        TArray<FString> CandidateRelativePaths;
+        TArray<FString> Aliases;
+    };
+
+    const TArray<FTemplateVariantDefinition> VariantDefinitions = {
+        {
+            TEXT("thirdperson"),
+            TEXT("Third Person"),
+            TEXT("ThirdPersonTemplate"),
+            {
+                TEXT("Templates/TP_ThirdPersonBP/Content"),
+                TEXT("Templates/TP_ThirdPerson/Content"),
+                TEXT("Templates/ThirdPerson/Content")
+            },
+            { TEXT("third"), TEXT("3rdperson"), TEXT("thirdpersonbp") }
+        },
+        {
+            TEXT("firstperson"),
+            TEXT("First Person"),
+            TEXT("FirstPersonTemplate"),
+            {
+                TEXT("Templates/FP_FirstPersonBP/Content"),
+                TEXT("Templates/FP_FirstPerson/Content"),
+                TEXT("Templates/FirstPerson/Content"),
+                TEXT("Templates/TP_FirstPersonBP/Content")
+            },
+            { TEXT("first"), TEXT("fps"), TEXT("firstpersonbp") }
+        },
+        {
+            TEXT("topdown"),
+            TEXT("Top Down"),
+            TEXT("TopDownTemplate"),
+            {
+                TEXT("Templates/TP_TopDownBP/Content"),
+                TEXT("Templates/TP_TopDown/Content"),
+                TEXT("Templates/TopDown/Content")
+            },
+            { TEXT("top"), TEXT("td"), TEXT("topdownbp") }
+        }
+    };
+
+    const FString NormalizedVariant = NormalizeVariantToken(VariantInput);
+
+    const FTemplateVariantDefinition* SelectedVariant = nullptr;
+    for (const FTemplateVariantDefinition& Definition : VariantDefinitions)
+    {
+        if (NormalizedVariant == Definition.Key)
+        {
+            SelectedVariant = &Definition;
+            break;
+        }
+
+        for (const FString& Alias : Definition.Aliases)
+        {
+            if (NormalizedVariant == NormalizeVariantToken(Alias))
+            {
+                SelectedVariant = &Definition;
+                break;
+            }
+        }
+
+        if (SelectedVariant != nullptr)
+        {
+            break;
+        }
+    }
+
+    if (!SelectedVariant)
+    {
+        TArray<FString> SupportedVariants;
+        for (const FTemplateVariantDefinition& Definition : VariantDefinitions)
+        {
+            SupportedVariants.Add(Definition.FriendlyName);
+        }
+
+        FString SupportedList = FString::Join(SupportedVariants, TEXT(", "));
+        MCP_LOG_WARNING("Unsupported template variant requested: %s", *VariantInput);
+        return CreateErrorResponse(FString::Printf(TEXT("Unsupported template variant '%s'. Supported variants: %s."), *VariantInput, *SupportedList));
+    }
+
+    FString DestinationFolderName;
+    if (!Params->TryGetStringField(FStringView(TEXT("destination_folder")), DestinationFolderName) || DestinationFolderName.IsEmpty())
+    {
+        DestinationFolderName = SelectedVariant->DefaultFolderName;
+    }
+
+    FString CategoryFolder = TEXT("MCPTemplates");
+    Params->TryGetStringField(FStringView(TEXT("category")), CategoryFolder);
+    if (CategoryFolder.IsEmpty())
+    {
+        CategoryFolder = TEXT("MCPTemplates");
+    }
+
+    bool bOverwriteExisting = false;
+    Params->TryGetBoolField(FStringView(TEXT("overwrite_existing")), bOverwriteExisting);
+
+    IFileManager& FileManager = IFileManager::Get();
+    IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
+
+    FString SourceDirectory;
+    for (const FString& RelativePath : SelectedVariant->CandidateRelativePaths)
+    {
+        FString CandidatePath = FPaths::ConvertRelativePathToFull(FPaths::Combine(FPaths::EngineDir(), RelativePath));
+        FPaths::NormalizeDirectoryName(CandidatePath);
+        if (PlatformFile.DirectoryExists(*CandidatePath))
+        {
+            SourceDirectory = CandidatePath;
+            break;
+        }
+    }
+
+    if (SourceDirectory.IsEmpty())
+    {
+        FString TemplatesRoot = FPaths::ConvertRelativePathToFull(FPaths::Combine(FPaths::EngineDir(), TEXT("Templates")));
+        if (PlatformFile.DirectoryExists(*TemplatesRoot))
+        {
+            PlatformFile.IterateDirectory(*TemplatesRoot, [&NormalizeVariantToken, &SelectedVariant, &SourceDirectory, &PlatformFile](const TCHAR* FilenameOrDirectory, bool bIsDirectory)
+            {
+                if (!bIsDirectory || SourceDirectory.Len() > 0)
+                {
+                    return true;
+                }
+
+                FString DirectoryPath(FilenameOrDirectory);
+                FString DirectoryName = NormalizeVariantToken(FPaths::GetCleanFilename(DirectoryPath));
+                if (DirectoryName.Contains(SelectedVariant->Key))
+                {
+                    FString CandidateContentPath = FPaths::Combine(DirectoryPath, TEXT("Content"));
+                    if (PlatformFile.DirectoryExists(*CandidateContentPath))
+                    {
+                        SourceDirectory = CandidateContentPath;
+                        return false; // stop iterating
+                    }
+                }
+                return true;
+            });
+        }
+    }
+
+    if (SourceDirectory.IsEmpty())
+    {
+        MCP_LOG_ERROR("Failed to locate content source for template variant %s", *SelectedVariant->FriendlyName);
+        return CreateErrorResponse(FString::Printf(TEXT("Failed to locate template content for '%s' inside the engine's Templates directory."), *SelectedVariant->FriendlyName));
+    }
+
+    FString DestinationDirectory = FPaths::ConvertRelativePathToFull(FPaths::Combine(FPaths::ProjectContentDir(), CategoryFolder, DestinationFolderName));
+    FPaths::NormalizeDirectoryName(DestinationDirectory);
+
+    if (PlatformFile.DirectoryExists(*DestinationDirectory))
+    {
+        if (!bOverwriteExisting)
+        {
+            MCP_LOG_WARNING("Destination directory already exists: %s", *DestinationDirectory);
+            return CreateErrorResponse(FString::Printf(TEXT("Destination directory '%s' already exists. Set overwrite_existing to true to replace it."), *DestinationDirectory));
+        }
+
+        if (!PlatformFile.DeleteDirectoryRecursively(*DestinationDirectory))
+        {
+            MCP_LOG_ERROR("Failed to delete existing destination directory: %s", *DestinationDirectory);
+            return CreateErrorResponse(FString::Printf(TEXT("Failed to delete existing destination directory '%s'."), *DestinationDirectory));
+        }
+    }
+
+    if (!PlatformFile.CreateDirectoryTree(*DestinationDirectory))
+    {
+        MCP_LOG_ERROR("Failed to create destination directory: %s", *DestinationDirectory);
+        return CreateErrorResponse(FString::Printf(TEXT("Failed to create destination directory '%s'."), *DestinationDirectory));
+    }
+
+    if (!PlatformFile.CopyDirectoryTree(*DestinationDirectory, *SourceDirectory, true))
+    {
+        MCP_LOG_ERROR("Failed to copy template content from %s to %s", *SourceDirectory, *DestinationDirectory);
+        return CreateErrorResponse(FString::Printf(TEXT("Failed to copy template content from '%s' to '%s'."), *SourceDirectory, *DestinationDirectory));
+    }
+
+    TArray<FString> CopiedFiles;
+    FileManager.FindFilesRecursive(CopiedFiles, *DestinationDirectory, TEXT("*.*"), true, false);
+
+    FString PackagePath = FPaths::Combine(TEXT("/Game"), CategoryFolder, DestinationFolderName);
+    FPaths::NormalizeDirectoryName(PackagePath);
+
+    FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+    TArray<FString> PathsToScan;
+    PathsToScan.Add(PackagePath);
+    AssetRegistryModule.Get().ScanPathsSynchronous(PathsToScan, true);
+
+    TArray<TSharedPtr<FJsonValue>> SampleFilesJson;
+    for (const FString& FilePath : CopiedFiles)
+    {
+        if (SampleFilesJson.Num() >= 5)
+        {
+            break;
+        }
+
+        FString RelativePath = FilePath;
+        if (FPaths::MakePathRelativeTo(RelativePath, *DestinationDirectory))
+        {
+            SampleFilesJson.Add(MakeShared<FJsonValueString>(RelativePath));
+        }
+        else
+        {
+            SampleFilesJson.Add(MakeShared<FJsonValueString>(FilePath));
+        }
+    }
+
+    TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
+    Result->SetStringField("variant", SelectedVariant->FriendlyName);
+    Result->SetStringField("source_directory", SourceDirectory);
+    Result->SetStringField("destination_directory", DestinationDirectory);
+    Result->SetStringField("content_path", PackagePath);
+    Result->SetNumberField("files_copied", CopiedFiles.Num());
+    Result->SetArrayField("sample_files", SampleFilesJson);
+    Result->SetBoolField("overwrote_existing", bOverwriteExisting);
+
+    MCP_LOG_INFO("Successfully imported template variant %s to %s", *SelectedVariant->FriendlyName, *DestinationDirectory);
+
+    return CreateSuccessResponse(Result);
 }
