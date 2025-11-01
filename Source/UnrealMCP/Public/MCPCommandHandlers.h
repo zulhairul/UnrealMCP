@@ -183,3 +183,23 @@ public:
      */
     virtual TSharedPtr<FJsonObject> Execute(const TSharedPtr<FJsonObject>& Params, FSocket* ClientSocket) override;
 }; 
+
+/**
+ * Handler for importing template content packs into the project
+ */
+class FMCPImportTemplateHandler : public FMCPCommandHandlerBase
+{
+public:
+    FMCPImportTemplateHandler()
+        : FMCPCommandHandlerBase("import_template_variant")
+    {
+    }
+
+    /**
+     * Execute the import_template_variant command
+     * @param Params - The command parameters
+     * @param ClientSocket - The client socket
+     * @return JSON response object
+     */
+    virtual TSharedPtr<FJsonObject> Execute(const TSharedPtr<FJsonObject>& Params, FSocket* ClientSocket) override;
+};

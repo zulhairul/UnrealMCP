@@ -41,6 +41,14 @@
 		{
 			"Name": "GameplayTasks",
 			"Enabled": true
+        },
+        {
+            "Name": "AddContentDialog",
+            "Enabled": true
+        },
+        {
+            "Name": "FeaturePack",
+            "Enabled": true
 		}
 	]
 }
