@@ -29,6 +29,18 @@
 		{
 			"Name": "DataTableEditor",
 			"Enabled": true
+		},
+		{
+			"Name": "GameplayAbilities",
+			"Enabled": true
+		},
+		{
+			"Name": "GameplayTags",
+			"Enabled": true
+		},
+		{
+			"Name": "GameplayTasks",
+			"Enabled": true
 		}
 	]
 }

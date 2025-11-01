@@ -45,6 +45,7 @@ By using this plugin, you acknowledge that:
 - JSON-based command protocol for AI tools integration
 - Editor UI integration for easy access to MCP functionality
 - Comprehensive scene manipulation capabilities
+- Gameplay Ability System tooling for creating Gameplay Effects and managing data table registrations
 - Python companion scripts for client-side interaction
 
 ## Roadmap
@@ -64,7 +65,7 @@ good the integrated LLM is at utilizing these tools.
 - [ ] PCG
 
 ## Requirements
-- Unreal Engine 5.5 (I have only tested on this version, may work with earlier, but no official support)
+- Unreal Engine 5.6 (primary target; earlier versions may work but are not officially supported)
 - C++ development environment configured for Unreal Engine
 - Python 3.7+ for client-side scripting
 - Model to run the commands, in testing I've been using Claude for Desktop https://claude.ai/download
@@ -150,7 +151,13 @@ The plugin supports various commands for scene manipulation:
 - `delete_object`: Remove an object from the scene
 - `modify_object`: Change properties of an existing object
 - `execute_python`: Run Python commands in Unreal's Python environment
+- `create_gameplay_effect`: Generate or update Gameplay Effect assets with configurable modifiers
+- `register_gameplay_effect`: Register a Gameplay Effect inside a data table row for quick lookup
 - And more to come...
+
+### Python helper tools
+- `make_ge_modifier`: Build reusable Gameplay Effect modifier payloads
+- `make_application_requirements`: Assemble tag requirements used during effect application checks
 
 Refer to the documentation in the `Docs` directory for a complete command reference.
 
