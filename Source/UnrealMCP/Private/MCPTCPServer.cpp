@@ -20,6 +20,7 @@
 #include "MCPCommandHandlers_DataTables.h"
 #include "MCPCommandHandlers_GameplayAbilities.h"
 #include "MCPCommandHandlers_Materials.h"
+#include "MCPCommandHandlers_PostProcess.h"
 #include "HAL/PlatformFilemanager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -39,6 +40,9 @@ FMCPTCPServer::FMCPTCPServer(const FMCPTCPServerConfig& InConfig)
     RegisterCommandHandler(MakeShared<FMCPDeleteObjectHandler>());
     RegisterCommandHandler(MakeShared<FMCPExecutePythonHandler>());
     RegisterCommandHandler(MakeShared<FMCPImportTemplateHandler>());
+
+    // Scene rendering and grading tools
+    RegisterCommandHandler(MakeShared<FMCPApplyColorGradingHandler>());
 
     // Material command handlers
     RegisterCommandHandler(MakeShared<FMCPCreateMaterialHandler>());

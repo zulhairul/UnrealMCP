@@ -49,6 +49,14 @@
         {
             "Name": "FeaturePack",
             "Enabled": true
-		}
+        },
+        {
+            "Name": "ColorCorrectRegions",
+            "Enabled": true
+        },
+        {
+            "Name": "Composure",
+            "Enabled": true
+        }
 	]
 }
