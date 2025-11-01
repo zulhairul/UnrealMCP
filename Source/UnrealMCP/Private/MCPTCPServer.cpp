@@ -56,6 +56,7 @@ FMCPTCPServer::FMCPTCPServer(const FMCPTCPServerConfig& InConfig)
     // Gameplay Ability System command handlers
     RegisterCommandHandler(MakeShared<FMCPCreateGameplayEffectHandler>());
     RegisterCommandHandler(MakeShared<FMCPRegisterGameplayEffectHandler>());
+    RegisterCommandHandler(MakeShared<FMCPCreateAttributeSetHandler>());
 
     // Blueprint command handlers
     RegisterCommandHandler(MakeShared<FMCPCreateBlueprintHandler>());

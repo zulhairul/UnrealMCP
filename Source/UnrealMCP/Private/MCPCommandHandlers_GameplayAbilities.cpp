@@ -12,11 +12,13 @@
 #include "GameplayTagsManager.h"
 #include "MCPCommandHandlers_DataTables.h"
 #include "MCPFileLogger.h"
+#include "Misc/FileHelper.h"
 #include "Misc/PackageName.h"
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
 #include "UObject/Package.h"
 #include "UObject/SavePackage.h"
+#include "HAL/PlatformFilemanager.h"
 
 namespace
 {
@@ -922,4 +924,477 @@ bool FMCPRegisterGameplayEffectHandler::BuildRowPayload(const FString& RowName, 
     OutRowPayload->SetStringField(EffectField, EffectPath);
 
     return true;
+}
+
+FMCPCreateAttributeSetHandler::FMCPCreateAttributeSetHandler()
+    : FMCPCommandHandlerBase(TEXT("create_attribute_set"))
+{
+}
+
+FString FMCPCreateAttributeSetHandler::SanitiseIdentifier(const FString& InName, const FString& FallbackPrefix, FString& OutError) const
+{
+    OutError.Reset();
+
+    FString Trimmed = InName;
+    Trimmed.TrimStartAndEndInline();
+
+    FString Result;
+    Result.Reserve(Trimmed.Len());
+
+    bool bCapitaliseNext = true;
+    for (int32 Index = 0; Index < Trimmed.Len(); ++Index)
+    {
+        const TCHAR Char = Trimmed[Index];
+        if (FChar::IsAlnum(Char))
+        {
+            if (bCapitaliseNext)
+            {
+                Result.AppendChar(FChar::ToUpper(Char));
+            }
+            else
+            {
+                Result.AppendChar(Char);
+            }
+            bCapitaliseNext = false;
+        }
+        else if (Char == TEXT('_'))
+        {
+            if (!Result.IsEmpty())
+            {
+                Result.AppendChar(TEXT('_'));
+            }
+            bCapitaliseNext = true;
+        }
+        else
+        {
+            bCapitaliseNext = true;
+        }
+    }
+
+    if (Result.IsEmpty())
+    {
+        if (FallbackPrefix.IsEmpty())
+        {
+            OutError = TEXT("Identifier could not be generated from the provided name.");
+            return FString();
+        }
+
+        Result = FallbackPrefix;
+    }
+
+    if (!FChar::IsAlpha(Result[0]) && Result[0] != TEXT('_'))
+    {
+        Result = FallbackPrefix + Result;
+    }
+
+    return Result;
+}
+
+bool FMCPCreateAttributeSetHandler::ParseAttributes(const TArray<TSharedPtr<FJsonValue>>& AttributeArray, TArray<FGeneratedAttribute>& OutAttributes, FString& OutError) const
+{
+    OutAttributes.Reset();
+    OutError.Reset();
+    TSet<FString> SeenNames;
+
+    for (const TSharedPtr<FJsonValue>& AttributeValue : AttributeArray)
+    {
+        if (!AttributeValue.IsValid())
+        {
+            continue;
+        }
+
+        TSharedPtr<FJsonObject> AttributeObject = AttributeValue->AsObject();
+        if (!AttributeObject.IsValid())
+        {
+            OutError = TEXT("Each attribute entry must be a JSON object.");
+            return false;
+        }
+
+        FString RawName;
+        if (!AttributeObject->TryGetStringField(TEXT("name"), RawName) || RawName.TrimStartAndEnd().IsEmpty())
+        {
+            OutError = TEXT("Attribute entries require a non-empty 'name' field.");
+            return false;
+        }
+
+        FString SanitisedName = SanitiseIdentifier(RawName, TEXT("Attribute"), OutError);
+        if (!OutError.IsEmpty())
+        {
+            return false;
+        }
+
+        if (SeenNames.Contains(SanitisedName))
+        {
+            OutError = FString::Printf(TEXT("Duplicate attribute name '%s' detected."), *SanitisedName);
+            return false;
+        }
+        SeenNames.Add(SanitisedName);
+
+        FGeneratedAttribute Attribute;
+        Attribute.PropertyName = SanitisedName;
+
+        double InitialValue = 0.0;
+        if (AttributeObject->TryGetNumberField(TEXT("initial_value"), InitialValue))
+        {
+            Attribute.InitialValue = static_cast<float>(InitialValue);
+        }
+
+        bool bReplicated = true;
+        if (AttributeObject->TryGetBoolField(TEXT("replicated"), bReplicated))
+        {
+            Attribute.bReplicated = bReplicated;
+        }
+
+        FString Category;
+        if (AttributeObject->TryGetStringField(TEXT("category"), Category))
+        {
+            Category.TrimStartAndEndInline();
+            Attribute.Category = Category.IsEmpty() ? TEXT("Attributes") : Category;
+        }
+        else
+        {
+            Attribute.Category = TEXT("Attributes");
+        }
+
+        FString Tooltip;
+        if (AttributeObject->TryGetStringField(TEXT("tooltip"), Tooltip))
+        {
+            Tooltip.TrimStartAndEndInline();
+            Attribute.Tooltip = Tooltip;
+        }
+
+        OutAttributes.Add(Attribute);
+    }
+
+    return true;
+}
+
+FString FMCPCreateAttributeSetHandler::BuildHeaderContent(const FString& ClassName, const FString& ModuleApiMacro, const FString& GeneratedInclude, const TArray<FGeneratedAttribute>& Attributes, bool& bOutHasReplication) const
+{
+    FString Content;
+    Content.Reserve(2048);
+
+    Content += TEXT("#pragma once\n\n");
+    Content += TEXT("#include \"CoreMinimal.h\"\n");
+    Content += TEXT("#include \"AttributeSet.h\"\n");
+    Content += TEXT("#include \"AbilitySystemComponent.h\"\n\n");
+    Content += FString::Printf(TEXT("#include \"%s.generated.h\"\n\n"), *GeneratedInclude);
+
+    Content += TEXT("UCLASS(BlueprintType)\n");
+    Content += FString::Printf(TEXT("class %s %s : public UAttributeSet\n"), *ModuleApiMacro, *ClassName);
+    Content += TEXT("{\n");
+    Content += TEXT("    GENERATED_BODY()\n\n");
+
+    Content += TEXT("public:\n");
+    Content += FString::Printf(TEXT("    %s();\n\n"), *ClassName);
+
+    bOutHasReplication = false;
+
+    if (Attributes.Num() > 0)
+    {
+        Content += TEXT("    // Gameplay Attributes\n");
+        for (const FGeneratedAttribute& Attribute : Attributes)
+        {
+            if (!Attribute.Tooltip.IsEmpty())
+            {
+                Content += FString::Printf(TEXT("    /** %s */\n"), *Attribute.Tooltip);
+            }
+
+            FString PropertyLine = FString::Printf(TEXT("    UPROPERTY(BlueprintReadOnly, Category=\"%s\""), *Attribute.Category);
+            if (Attribute.bReplicated)
+            {
+                PropertyLine += FString::Printf(TEXT(", ReplicatedUsing=OnRep_%s"), *Attribute.PropertyName);
+            }
+            PropertyLine += TEXT(", meta=(AllowPrivateAccess=\"true\"))\n");
+            Content += PropertyLine;
+
+            Content += FString::Printf(TEXT("    FGameplayAttributeData %s;\n"), *Attribute.PropertyName);
+            Content += FString::Printf(TEXT("    ATTRIBUTE_ACCESSORS(%s, %s);\n\n"), *ClassName, *Attribute.PropertyName);
+
+            if (Attribute.bReplicated)
+            {
+                bOutHasReplication = true;
+            }
+        }
+    }
+    else
+    {
+        Content += TEXT("    // Define gameplay attributes here\n\n");
+    }
+
+    if (bOutHasReplication)
+    {
+        Content += TEXT("    virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;\n\n");
+    }
+
+    if (bOutHasReplication)
+    {
+        Content += TEXT("protected:\n");
+        Content += TEXT("    // Replication callbacks\n");
+        for (const FGeneratedAttribute& Attribute : Attributes)
+        {
+            if (!Attribute.bReplicated)
+            {
+                continue;
+            }
+
+            Content += FString::Printf(TEXT("    UFUNCTION()\n    void OnRep_%s(const FGameplayAttributeData& Old%s);\n\n"), *Attribute.PropertyName, *Attribute.PropertyName);
+        }
+    }
+
+    Content += TEXT("};\n");
+
+    return Content;
+}
+
+FString FMCPCreateAttributeSetHandler::BuildSourceContent(const FString& ClassName, const FString& SourceInclude, const TArray<FGeneratedAttribute>& Attributes, bool bHasReplication) const
+{
+    FString Content;
+    Content.Reserve(2048);
+
+    Content += FString::Printf(TEXT("#include \"%s\"\n"), *SourceInclude);
+    if (bHasReplication)
+    {
+        Content += TEXT("#include \"Net/UnrealNetwork.h\"\n");
+    }
+    Content += TEXT("\n");
+
+    Content += FString::Printf(TEXT("%s::%s()\n"), *ClassName, *ClassName);
+    Content += TEXT("{\n");
+
+    if (Attributes.Num() == 0)
+    {
+        Content += TEXT("    // Initialise attribute default values here\n");
+    }
+    else
+    {
+        for (const FGeneratedAttribute& Attribute : Attributes)
+        {
+            const FString Literal = FormatFloatLiteral(Attribute.InitialValue);
+            Content += FString::Printf(TEXT("    %s.SetBaseValue(%s);\n"), *Attribute.PropertyName, *Literal);
+            Content += FString::Printf(TEXT("    %s.SetCurrentValue(%s);\n"), *Attribute.PropertyName, *Literal);
+        }
+    }
+
+    Content += TEXT("}\n\n");
+
+    if (bHasReplication)
+    {
+        Content += FString::Printf(TEXT("void %s::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const\n"), *ClassName);
+        Content += TEXT("{\n");
+        Content += TEXT("    Super::GetLifetimeReplicatedProps(OutLifetimeProps);\n\n");
+
+        for (const FGeneratedAttribute& Attribute : Attributes)
+        {
+            if (!Attribute.bReplicated)
+            {
+                continue;
+            }
+
+            Content += FString::Printf(TEXT("    DOREPLIFETIME_CONDITION_NOTIFY(%s, %s, COND_None, REPNOTIFY_Always);\n"), *ClassName, *Attribute.PropertyName);
+        }
+
+        Content += TEXT("}\n\n");
+
+        for (const FGeneratedAttribute& Attribute : Attributes)
+        {
+            if (!Attribute.bReplicated)
+            {
+                continue;
+            }
+
+            Content += FString::Printf(TEXT("void %s::OnRep_%s(const FGameplayAttributeData& Old%s)\n"), *ClassName, *Attribute.PropertyName, *Attribute.PropertyName);
+            Content += TEXT("{\n");
+            Content += FString::Printf(TEXT("    GAMEPLAYATTRIBUTE_REPNOTIFY(%s, %s, Old%s);\n"), *ClassName, *Attribute.PropertyName, *Attribute.PropertyName);
+            Content += TEXT("}\n\n");
+        }
+    }
+
+    return Content;
+}
+
+FString FMCPCreateAttributeSetHandler::FormatFloatLiteral(float Value) const
+{
+    if (FMath::IsNaN(Value) || !FMath::IsFinite(Value))
+    {
+        return TEXT("0.0f");
+    }
+
+    FString Literal = FString::Printf(TEXT("%.6g"), Value);
+    if (!Literal.Contains(TEXT(".")) && !Literal.Contains(TEXT("e")) && !Literal.Contains(TEXT("E")))
+    {
+        Literal += TEXT(".0");
+    }
+
+    Literal += TEXT("f");
+    return Literal;
+}
+
+TSharedPtr<FJsonObject> FMCPCreateAttributeSetHandler::Execute(const TSharedPtr<FJsonObject>& Params, FSocket* ClientSocket)
+{
+    MCP_LOG_INFO(TEXT("Handling create_attribute_set command"));
+
+    FString ModuleName;
+    if (!Params->TryGetStringField(TEXT("module_name"), ModuleName) || ModuleName.TrimStartAndEnd().IsEmpty())
+    {
+        MCP_LOG_WARNING(TEXT("Missing 'module_name' parameter for create_attribute_set"));
+        return CreateErrorResponse(TEXT("Missing 'module_name' field"));
+    }
+    ModuleName.TrimStartAndEndInline();
+
+    FString ClassNameInput;
+    if (!Params->TryGetStringField(TEXT("class_name"), ClassNameInput) || ClassNameInput.TrimStartAndEnd().IsEmpty())
+    {
+        MCP_LOG_WARNING(TEXT("Missing 'class_name' parameter for create_attribute_set"));
+        return CreateErrorResponse(TEXT("Missing 'class_name' field"));
+    }
+    ClassNameInput.TrimStartAndEndInline();
+
+    FString ClassName = ClassNameInput;
+    if (!ClassName.StartsWith(TEXT("U")))
+    {
+        ClassName = TEXT("U") + ClassName;
+    }
+
+    FString FileBaseName = ClassName;
+    if (!FileBaseName.IsEmpty())
+    {
+        FileBaseName.RemoveAt(0);
+    }
+
+    if (FileBaseName.IsEmpty())
+    {
+        FileBaseName = ClassName.RightChop(1);
+        if (FileBaseName.IsEmpty())
+        {
+            FileBaseName = ClassName + TEXT("AttributeSet");
+        }
+    }
+
+    FString ModuleApiMacro;
+    if (!Params->TryGetStringField(TEXT("module_api"), ModuleApiMacro) || ModuleApiMacro.TrimStartAndEnd().IsEmpty())
+    {
+        FString ModuleNameUpper = ModuleName;
+        ModuleNameUpper.ToUpperInline();
+        ModuleApiMacro = ModuleNameUpper + TEXT("_API");
+    }
+    ModuleApiMacro.TrimStartAndEndInline();
+
+    FString PublicSubfolder = TEXT("Attributes");
+    Params->TryGetStringField(TEXT("public_subfolder"), PublicSubfolder);
+    PublicSubfolder.TrimStartAndEndInline();
+
+    FString PrivateSubfolder = TEXT("Attributes");
+    Params->TryGetStringField(TEXT("private_subfolder"), PrivateSubfolder);
+    PrivateSubfolder.TrimStartAndEndInline();
+
+    bool bOverwriteExisting = false;
+    Params->TryGetBoolField(TEXT("overwrite"), bOverwriteExisting);
+
+    TArray<FGeneratedAttribute> Attributes;
+    const TArray<TSharedPtr<FJsonValue>>* AttributeArrayPtr = nullptr;
+    if (Params->TryGetArrayField(TEXT("attributes"), AttributeArrayPtr) && AttributeArrayPtr)
+    {
+        FString AttributeParseError;
+        if (!ParseAttributes(*AttributeArrayPtr, Attributes, AttributeParseError))
+        {
+            MCP_LOG_WARNING(TEXT("Failed to parse attributes: %s"), *AttributeParseError);
+            return CreateErrorResponse(AttributeParseError);
+        }
+    }
+
+    IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
+
+    FString ModuleRoot = FPaths::ConvertRelativePathToFull(FPaths::Combine(FPaths::ProjectDir(), TEXT("Source"), ModuleName));
+    if (!PlatformFile.DirectoryExists(*ModuleRoot))
+    {
+        FString Message = FString::Printf(TEXT("Module directory '%s' does not exist."), *ModuleRoot);
+        MCP_LOG_ERROR(TEXT("%s"), *Message);
+        return CreateErrorResponse(Message);
+    }
+
+    auto BuildDirectory = [&PlatformFile](const FString& Root, const FString& Subfolder) -> FString
+    {
+        FString Directory = Root;
+        FString CleanSubfolder = Subfolder;
+        CleanSubfolder.ReplaceInline(TEXT("\\"), TEXT("/"));
+
+        TArray<FString> Components;
+        CleanSubfolder.ParseIntoArray(Components, TEXT("/"), true);
+        for (const FString& Component : Components)
+        {
+            if (Component.IsEmpty())
+            {
+                continue;
+            }
+            Directory = FPaths::Combine(Directory, Component);
+        }
+
+        PlatformFile.CreateDirectoryTree(*Directory);
+        return Directory;
+    };
+
+    FString PublicRoot = FPaths::Combine(ModuleRoot, TEXT("Public"));
+    FString PrivateRoot = FPaths::Combine(ModuleRoot, TEXT("Private"));
+
+    if (!PlatformFile.DirectoryExists(*PublicRoot) || !PlatformFile.DirectoryExists(*PrivateRoot))
+    {
+        FString Message = FString::Printf(TEXT("Module '%s' must contain Public and Private directories."), *ModuleName);
+        MCP_LOG_ERROR(TEXT("%s"), *Message);
+        return CreateErrorResponse(Message);
+    }
+
+    FString PublicDirectory = BuildDirectory(PublicRoot, PublicSubfolder);
+    FString PrivateDirectory = BuildDirectory(PrivateRoot, PrivateSubfolder);
+
+    FString HeaderPath = FPaths::Combine(PublicDirectory, FileBaseName + TEXT(".h"));
+    FString SourcePath = FPaths::Combine(PrivateDirectory, FileBaseName + TEXT(".cpp"));
+
+    if (!bOverwriteExisting)
+    {
+        if (PlatformFile.FileExists(*HeaderPath) || PlatformFile.FileExists(*SourcePath))
+        {
+            FString Message = FString::Printf(TEXT("Attribute set files already exist at '%s' or '%s'. Enable overwrite to replace them."), *HeaderPath, *SourcePath);
+            MCP_LOG_WARNING(TEXT("%s"), *Message);
+            return CreateErrorResponse(Message);
+        }
+    }
+
+    bool bHasReplication = false;
+    FString HeaderContent = BuildHeaderContent(ClassName, ModuleApiMacro, FileBaseName, Attributes, bHasReplication);
+
+    FString HeaderIncludePath = HeaderPath;
+    if (!FPaths::MakePathRelativeTo(HeaderIncludePath, *PublicRoot))
+    {
+        HeaderIncludePath = FileBaseName + TEXT(".h");
+    }
+    HeaderIncludePath.ReplaceInline(TEXT("\\"), TEXT("/"));
+
+    FString SourceContent = BuildSourceContent(ClassName, HeaderIncludePath, Attributes, bHasReplication);
+
+    if (!FFileHelper::SaveStringToFile(HeaderContent, *HeaderPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+    {
+        FString Message = FString::Printf(TEXT("Failed to save attribute set header '%s'."), *HeaderPath);
+        MCP_LOG_ERROR(TEXT("%s"), *Message);
+        return CreateErrorResponse(Message);
+    }
+
+    if (!FFileHelper::SaveStringToFile(SourceContent, *SourcePath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+    {
+        FString Message = FString::Printf(TEXT("Failed to save attribute set source '%s'."), *SourcePath);
+        MCP_LOG_ERROR(TEXT("%s"), *Message);
+        return CreateErrorResponse(Message);
+    }
+
+    MCP_LOG_INFO(TEXT("Created attribute set '%s' with %d attributes."), *ClassName, Attributes.Num());
+
+    TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
+    Result->SetStringField(TEXT("class_name"), ClassName);
+    Result->SetStringField(TEXT("module_name"), ModuleName);
+    Result->SetStringField(TEXT("header_path"), HeaderPath);
+    Result->SetStringField(TEXT("source_path"), SourcePath);
+    Result->SetNumberField(TEXT("attribute_count"), Attributes.Num());
+    Result->SetBoolField(TEXT("has_replication"), bHasReplication);
+
+    return CreateSuccessResponse(Result);
 }

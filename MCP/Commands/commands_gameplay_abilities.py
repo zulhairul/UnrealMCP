@@ -135,6 +135,60 @@ def register_all(mcp):
             return {"error": str(error)}
 
     @mcp.tool()
+    def create_attribute_set(
+        ctx: Context,
+        module_name: str,
+        class_name: str,
+        attributes: Optional[List[Dict[str, object]]] = None,
+        public_subfolder: str = "Attributes",
+        private_subfolder: str = "Attributes",
+        overwrite: bool = False,
+        module_api: Optional[str] = None,
+    ) -> Dict[str, object]:
+        """Generate a `UAttributeSet` subclass with optional replicated attributes.
+
+        Args:
+            module_name: Target module the class should live in (e.g. 'UnrealMCP' or the project module name).
+            class_name: Name of the C++ class to create (without prefix 'U').
+            attributes: Optional list describing attributes to scaffold. Each entry supports:
+                - name (str): Attribute property name (PascalCase recommended).
+                - initial_value (float, default 0.0): Initial base/current value.
+                - category (str, default 'Attributes'): UPROPERTY category metadata.
+                - replicated (bool, default True): Whether to generate replication plumbing.
+                - tooltip (str, optional): Tooltip metadata for the property.
+            public_subfolder: Subfolder relative to the module's Public directory.
+            private_subfolder: Subfolder relative to the module's Private directory.
+            overwrite: When True, replaces existing files if they already exist.
+            module_api: Optional custom API export macro for the class (defaults to MODULE_API derived from module_name).
+
+        Returns:
+            Details about the generated header and source files, or an error payload.
+        """
+
+        try:
+            params: Dict[str, object] = {
+                "module_name": module_name,
+                "class_name": class_name,
+                "public_subfolder": public_subfolder,
+                "private_subfolder": private_subfolder,
+                "overwrite": overwrite,
+            }
+
+            if attributes:
+                params["attributes"] = attributes
+
+            if module_api:
+                params["module_api"] = module_api
+
+            response = send_command("create_attribute_set", params)
+            if response.get("status") == "success":
+                return response.get("result", {})
+
+            return {"error": response.get("message", "Unknown error")}
+        except Exception as error:  # noqa: BLE001
+            return {"error": str(error)}
+
+    @mcp.tool()
     def register_gameplay_effect(
         ctx: Context,
         data_table_path: str,
