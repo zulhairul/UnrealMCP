@@ -17,6 +17,7 @@
 #include "MCPFileLogger.h"
 #include "MCPCommandHandlers.h"
 #include "MCPCommandHandlers_Blueprints.h"
+#include "MCPCommandHandlers_DataTables.h"
 #include "MCPCommandHandlers_Materials.h"
 #include "HAL/PlatformFilemanager.h"
 #include "Misc/FileHelper.h"
@@ -41,6 +42,10 @@ FMCPTCPServer::FMCPTCPServer(const FMCPTCPServerConfig& InConfig)
     RegisterCommandHandler(MakeShared<FMCPCreateMaterialHandler>());
     RegisterCommandHandler(MakeShared<FMCPModifyMaterialHandler>());
     RegisterCommandHandler(MakeShared<FMCPGetMaterialInfoHandler>());
+
+    // Data table command handlers
+    RegisterCommandHandler(MakeShared<FMCPCreateDataTableHandler>());
+    RegisterCommandHandler(MakeShared<FMCPModifyDataTableHandler>());
 
     // Blueprint command handlers
     RegisterCommandHandler(MakeShared<FMCPCreateBlueprintHandler>());
