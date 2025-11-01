@@ -46,6 +46,7 @@ By using this plugin, you acknowledge that:
 - Editor UI integration for easy access to MCP functionality
 - Comprehensive scene manipulation capabilities
 - Gameplay Ability System tooling for creating Gameplay Effects and managing data table registrations
+- Niagara VFX asset tooling for system creation, parameter editing, and emitter management
 - Python companion scripts for client-side interaction
 - Celestial Vault environment setup tooling for dynamic sky and time-of-day control
 
@@ -59,7 +60,7 @@ good the integrated LLM is at utilizing these tools.
 - [ ] User Extensions (in progress)
 - [ ] Asset tools
 - [ ] Blueprints
-- [ ] Niagara VFX
+- [X] Niagara VFX
 - [ ] Metasound
 - [ ] Landscape (I might hold off on this because Epic has mentioned they are going to be updating the landscape tools)
 - [ ] Modeling Tools
@@ -155,6 +156,9 @@ The plugin supports various commands for scene manipulation:
 - `create_gameplay_effect`: Generate or update Gameplay Effect assets with configurable modifiers
 - `register_gameplay_effect`: Register a Gameplay Effect inside a data table row for quick lookup
 - `setup_celestial_vault`: Spawn or update the Celestial Vault sky actor, apply geographic/time settings, and configure linked components
+- `create_niagara_system`: Build a new Niagara system asset (optionally from a template) and configure emitters/user parameters
+- `modify_niagara_system`: Adjust an existing Niagara system's exposed parameters and emitter collection
+- `get_niagara_system_info`: Inspect emitters and user parameters on a Niagara system for downstream automation
 - And more to come...
 
 ### Python helper tools
@@ -188,6 +192,55 @@ tool("setup_celestial_vault", {
 The tool reuses an existing actor when the `actor_label` or `actor_name` matches, otherwise it spawns the default Celestial Vault blueprint. Any property exposed on the actor or its referenced components can be overridden via simple JSON payloads, including struct types like `FVector`, `FLinearColor`, and `FDateTime`.
 
 Refer to the documentation in the `Docs` directory for a complete command reference.
+
+### Niagara VFX quick start
+Spin up cinematic-friendly Niagara effects and iterate on parameters directly from an MCP client:
+
+```python
+# Create a looping Niagara system from Epic's starter templates
+tool("create_niagara_system", {
+    "package_path": "/Game/VFX/Demo",
+    "name": "NS_Sparks_Demo",
+    "options": {
+        "template_path": "/Niagara/Systems/NS_Sparks.NS_Sparks",
+        "user_parameters": {
+            "SpawnRate": {"type": "float", "value": 120.0},
+            "ParticleTint": {"type": "color", "value": [1.0, 0.6, 0.1, 1.0]}
+        },
+        "emitters": {
+            "add": [
+                {
+                    "template_path": "/Niagara/Emitters/NE_RibbonSpark.NE_RibbonSpark",
+                    "name": "RibbonTrail",
+                    "enabled": True
+                }
+            ]
+        }
+    }
+})
+
+# Later: tweak exposed parameters and disable an emitter without leaving the MCP session
+tool("modify_niagara_system", {
+    "path": "/Game/VFX/Demo/NS_Sparks_Demo.NS_Sparks_Demo",
+    "options": {
+        "user_parameters": {
+            "SpawnRate": {"type": "float", "value": 80.0}
+        },
+        "emitters": {
+            "toggle": [
+                {"name": "RibbonTrail", "enabled": False}
+            ]
+        }
+    }
+})
+
+# Inspect the system to show Claude what it can manipulate next
+tool("get_niagara_system_info", {
+    "path": "/Game/VFX/Demo/NS_Sparks_Demo.NS_Sparks_Demo"
+})
+```
+
+All Niagara parameter payloads expect a `type` string (e.g., `float`, `vec3`, `color`) and a `value`. Vector and color values are expressed as numeric arrays, while integers, floats, and booleans accept scalars. Emitter operations support `add`, `remove`, and `toggle` collections, each enabling Claude to evolve complex multi-emitter systems programmatically.
 
 ## Security Considerations
 - The MCP server accepts connections from any client by default

@@ -28,7 +28,8 @@ public class UnrealMCP : ModuleRules
 				"Networking", "Sockets", "Slate", "SlateCore", "EditorStyle",
 				"DeveloperSettings", "Projects", "ToolMenus",
 				"BlueprintGraph", "GraphEditor", "KismetCompiler",
-				"UMG", "CommonUI", "ModelViewViewModel"
+				"UMG", "CommonUI", "ModelViewViewModel",
+				"Niagara"
 			}
 		);
 			
@@ -39,7 +40,7 @@ public class UnrealMCP : ModuleRules
 				"Kismet", "KismetWidgets", "AssetRegistry", "AssetTools",
 				"GameplayAbilities", "GameplayTags", "GameplayTasks",
 				"UMGEditor", "ModelViewViewModelEditor", "CommonInput",
-				"CelestialVault"
+				"CelestialVault", "NiagaraEditor"
 			}
 		);
 		

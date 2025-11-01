@@ -21,6 +21,7 @@
 #include "MCPCommandHandlers_DataTables.h"
 #include "MCPCommandHandlers_GameplayAbilities.h"
 #include "MCPCommandHandlers_Materials.h"
+#include "MCPCommandHandlers_Niagara.h"
 #include "MCPCommandHandlers_PostProcess.h"
 #include "MCPCommandHandlers_UI.h"
 #include "HAL/PlatformFilemanager.h"
@@ -50,6 +51,11 @@ FMCPTCPServer::FMCPTCPServer(const FMCPTCPServerConfig& InConfig)
     RegisterCommandHandler(MakeShared<FMCPCreateMaterialHandler>());
     RegisterCommandHandler(MakeShared<FMCPModifyMaterialHandler>());
     RegisterCommandHandler(MakeShared<FMCPGetMaterialInfoHandler>());
+
+    // Niagara VFX command handlers
+    RegisterCommandHandler(MakeShared<FMCPCreateNiagaraSystemHandler>());
+    RegisterCommandHandler(MakeShared<FMCPModifyNiagaraSystemHandler>());
+    RegisterCommandHandler(MakeShared<FMCPGetNiagaraSystemInfoHandler>());
 
     // Data table command handlers
     RegisterCommandHandler(MakeShared<FMCPCreateDataTableHandler>());
