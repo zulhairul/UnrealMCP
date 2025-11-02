@@ -77,6 +77,14 @@
         {
             "Name": "CelestialVault",
             "Enabled": true
+        },
+        {
+            "Name": "Niagara",
+            "Enabled": true
+        },
+        {
+            "Name": "NiagaraEditor",
+            "Enabled": true
         }
 	]
 }
