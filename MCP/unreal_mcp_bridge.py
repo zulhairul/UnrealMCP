@@ -84,9 +84,8 @@ except ImportError as e:
 
 # Initialize the MCP server
 mcp = FastMCP(
-    "UnrealMCP",
-    description="Unreal Engine integration through the Model Context Protocol"
-)
+    "UnrealMCP")
+
 
 def send_command(command_type, params=None, timeout=DEFAULT_TIMEOUT):
     """Send a command to the C++ MCP server and return the response.
